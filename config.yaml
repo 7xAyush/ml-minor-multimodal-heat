@@ -1,0 +1,59 @@
+paths:
+  # Root directory where processed dataset will be written
+  dataset_root: "dataset"
+
+  # Raw input files / directories (user can override these)
+  raw_satellite_dir: "raw/satellite_images"
+  satellite_metadata_csv: "raw/satellite_metadata.csv"  # must contain image_id, date, lst, tile_id
+  weather_csv: "raw/weather.csv"  # if missing, will be downloaded from Open-Meteo
+  urban_proxy_csv: "raw/urban_proxy.csv"  # population density or building density per tile
+
+  # Where to save downloaded weather data
+  weather_download_csv: "raw/weather_downloaded.csv"
+
+  # Optional Kaggle dataset source root (unzipped)
+  kaggle_source_dir: "raw/kaggle_source"
+
+grid:
+  tile_size_m: 1000
+  max_tiles: 100  # set to null for all tiles
+
+city:
+  name: "ExampleCity"
+  # Bounding box [min_lat, min_lon, max_lat, max_lon]
+  bbox: [12.0, 77.0, 13.0, 78.0]
+
+time:
+  start_date: "2022-01-01"
+  end_date: "2022-12-31"
+
+heat_risk:
+  # LST thresholds in degrees Celsius
+  low_threshold: 30.0
+  high_threshold: 35.0
+
+images:
+  size: [224, 224]
+  # Whether to apply simple augmentations (random horizontal flips, brightness jitter)
+  augment: false
+
+preprocessing:
+  # Columns used to join satellite, weather and urban tabular data
+  join_keys: ["date", "tile_id"]
+  # Identifier for each sample (must correspond to satellite image_id)
+  image_id_column: "image_id"
+  lst_column: "lst"
+  label_column: "label_class"
+
+  # Columns to exclude from scaling
+  exclude_from_scaling: ["image_id", "tile_id", "date", "label_class", "lst"]
+
+mode:
+  use_kaggle_source: true
+  demo_labels_if_missing: true
+
+splits:
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  random_state: 42

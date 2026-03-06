@@ -1,0 +1,9 @@
+numpy
+pandas
+scikit-learn
+opencv-python
+Pillow
+tqdm
+requests
+PyYAML
+
