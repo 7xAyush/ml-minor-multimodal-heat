@@ -1,0 +1,153 @@
+{
+  "mode": {
+    "data_mode": "synthetic",
+    "lst_source": "synthetic_demo",
+    "image_source": "kaggle",
+    "weather_source": "open_meteo",
+    "urban_source": "synthetic_constant"
+  },
+  "paths": {
+    "dataset_root": "dataset_synth_test",
+    "images_dir": "dataset_synth_test\\images",
+    "tabular_csv": "dataset_synth_test\\tabular.csv",
+    "labels_csv": "dataset_synth_test\\labels.csv",
+    "splits_dir": "dataset_synth_test\\splits"
+  },
+  "image_stats": {
+    "total_metadata_rows": 3,
+    "valid_images": 3,
+    "missing_images": 0,
+    "corrupt_images": 0,
+    "duplicate_images": 0,
+    "output_image_size": [
+      224,
+      224
+    ]
+  },
+  "preprocess_stats": {
+    "tabular": {
+      "numeric_columns": [
+        "temperature_2m",
+        "relativehumidity_2m",
+        "windspeed_10m",
+        "pop_density"
+      ],
+      "categorical_columns": [],
+      "feature_columns": [
+        "temperature_2m",
+        "relativehumidity_2m",
+        "windspeed_10m",
+        "pop_density",
+        "image_id",
+        "label_class",
+        "lst"
+      ],
+      "scaler_min_": [
+        22.516666666666666,
+        64.41666666666667,
+        6.920833333333333,
+        10000.0
+      ],
+      "scaler_max_": [
+        23.09583333333333,
+        73.08333333333333,
+        9.295833333333333,
+        10000.0
+      ]
+    },
+    "num_samples": 3,
+    "num_missing_processed_images": 0
+  },
+  "split_sizes": {
+    "train": 2,
+    "val": 1,
+    "test": 0
+  },
+  "total_samples": 3,
+  "class_distribution": {
+    "2": 2,
+    "1": 1
+  },
+  "tabular_schema": {
+    "temperature_2m": "float64",
+    "relativehumidity_2m": "float64",
+    "windspeed_10m": "float64",
+    "pop_density": "float64",
+    "image_id": "object",
+    "label_class": "int64",
+    "lst": "float64"
+  },
+  "tabular_stats": {
+    "numeric_summary": {
+      "temperature_2m": {
+        "count": 3.0,
+        "mean": 0.5227817745803355,
+        "std": 0.5015546109439007,
+        "min": 0.0,
+        "25%": 0.28417266187050316,
+        "50%": 0.5683453237410063,
+        "75%": 0.7841726618705032,
+        "max": 1.0
+      },
+      "relativehumidity_2m": {
+        "count": 3.0,
+        "mean": 0.49679487179487225,
+        "std": 0.5000308175907104,
+        "min": 0.0,
+        "25%": 0.24519230769230793,
+        "50%": 0.49038461538461586,
+        "75%": 0.7451923076923084,
+        "max": 1.0000000000000009
+      },
+      "windspeed_10m": {
+        "count": 3.0,
+        "mean": 0.5146198830409358,
+        "std": 0.5006408122999881,
+        "min": 0.0,
+        "25%": 0.2719298245614037,
+        "50%": 0.5438596491228074,
+        "75%": 0.7719298245614037,
+        "max": 1.0
+      },
+      "pop_density": {
+        "count": 3.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "25%": 0.0,
+        "50%": 0.0,
+        "75%": 0.0,
+        "max": 0.0
+      },
+      "label_class": {
+        "count": 3.0,
+        "mean": 1.6666666666666667,
+        "std": 0.5773502691896257,
+        "min": 1.0,
+        "25%": 1.5,
+        "50%": 2.0,
+        "75%": 2.0,
+        "max": 2.0
+      },
+      "lst": {
+        "count": 3.0,
+        "mean": 34.25186661313015,
+        "std": 2.2184519062055506,
+        "min": 31.737613359572595,
+        "25%": 33.41091992416814,
+        "50%": 35.08422648876368,
+        "75%": 35.508993239908925,
+        "max": 35.93375999105417
+      }
+    }
+  },
+  "missing_values": {
+    "temperature_2m": 0,
+    "relativehumidity_2m": 0,
+    "windspeed_10m": 0,
+    "pop_density": 0,
+    "image_id": 0,
+    "label_class": 0,
+    "lst": 0
+  }
+}

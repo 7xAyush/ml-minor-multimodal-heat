@@ -3,14 +3,29 @@ from pathlib import Path
 
 from src.utils import load_config, setup_logging, ensure_dir, save_metadata
 from src import download, clean, label, preprocess, split
+from src.real_pipeline import build_real_dataset
 
 
 def main(config_path: str = "config.yaml") -> None:
+    """
+    Entry point for building the dataset.
+
+    - If mode.data_mode == "real": run the REAL pipeline (no synthetic label generation).
+    - Otherwise: run the existing synthetic / Kaggle-based pipeline.
+    """
     config = load_config(config_path)
     logger = setup_logging()
 
     logger.info("Loaded config from %s", config_path)
 
+    data_mode = config.get("mode", {}).get("data_mode", "synthetic")
+    logger.info("Using data_mode='%s'", data_mode)
+
+    if data_mode == "real":
+        build_real_dataset(config, logger=logger)
+        return
+
+    # Synthetic / Kaggle-based pipeline (unchanged behaviour)
     # Prepare directories
     base_dataset_dir = Path(config["paths"]["dataset_root"])
     images_out_dir = base_dataset_dir / "images"
@@ -20,7 +35,7 @@ def main(config_path: str = "config.yaml") -> None:
     ensure_dir(splits_out_dir)
 
     # 1. Download / load raw data
-    logger.info("Step 1/6: Downloading or loading raw data")
+    logger.info("Step 1/6: Downloading or loading raw data (synthetic mode)")
     weather_df = download.download_weather(config)
     urban_df = download.download_or_load_urban_proxy(config)
     sat_meta_df, raw_image_dir = download.load_satellite_metadata_and_images(config)
@@ -53,7 +68,7 @@ def main(config_path: str = "config.yaml") -> None:
 
     # 6. Train/val/test splits
     logger.info("Step 6/6: Creating dataset splits")
-    split.create_splits(labels_df, config)
+    train_count, val_count, test_count = split.create_splits(labels_df, config)
 
     # Save main tabular + labels
     tabular_path = base_dataset_dir / "tabular.csv"
@@ -62,7 +77,15 @@ def main(config_path: str = "config.yaml") -> None:
     labels_df.to_csv(labels_path, index=False)
 
     # Build metadata and report
+    sources_cfg = config.get("sources", {})
     metadata = {
+        "mode": {
+            "data_mode": "synthetic",
+            "lst_source": sources_cfg.get("lst", "synthetic_demo"),
+            "image_source": sources_cfg.get("imagery", "kaggle"),
+            "weather_source": sources_cfg.get("weather", "open_meteo"),
+            "urban_source": sources_cfg.get("urban", "synthetic_constant"),
+        },
         "paths": {
             "dataset_root": str(base_dataset_dir),
             "images_dir": str(images_out_dir),
@@ -72,6 +95,11 @@ def main(config_path: str = "config.yaml") -> None:
         },
         "image_stats": image_stats,
         "preprocess_stats": preprocess_stats,
+        "split_sizes": {
+            "train": int(train_count),
+            "val": int(val_count),
+            "test": int(test_count),
+        },
     }
     metadata.update(clean.compute_dataset_report(tabular_df, labels_df, image_stats))
 

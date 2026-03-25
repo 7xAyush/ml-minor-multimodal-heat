@@ -14,6 +14,13 @@ paths:
   # Optional Kaggle dataset source root (unzipped)
   kaggle_source_dir: "raw/kaggle_source"
 
+sources:
+  # Provenance information for labels and features (used in metadata.json)
+  lst: "user_provided"          # e.g. landsat_c2_st, modis_mod11a1, etc.
+  imagery: "user_provided"      # e.g. landsat_c2_sr, sentinel2_sr
+  weather: "open_meteo"         # or "csv" if using pre-downloaded weather
+  urban: "none"                 # or "user_provided", "synthetic_constant"
+
 grid:
   tile_size_m: 1000
   max_tiles: 100  # set to null for all tiles
@@ -49,6 +56,10 @@ preprocessing:
   exclude_from_scaling: ["image_id", "tile_id", "date", "label_class", "lst"]
 
 mode:
+  # Select which data pipeline to run:
+  # - "synthetic": use Kaggle-based ingestion and (optionally) demo labels
+  # - "real": expect user-provided, physically meaningful LST + metadata
+  data_mode: "synthetic"
   use_kaggle_source: true
   demo_labels_if_missing: true
 

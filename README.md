@@ -24,25 +24,29 @@ source .venv/Scripts/activate  # on Windows PowerShell: .venv\Scripts\Activate.p
 pip install -r requirements.txt
 ```
 
-### 1.2. Quickstart (manual images)
+### 1.2. Quickstart (REAL mode, manual or EE-derived images)
 
 1. Place satellite images under `raw/satellite_images/` with filenames matching `image_id` (e.g. `img_0001.png`).
 2. Create `raw/satellite_metadata.csv` with columns: `image_id,date,lst,tile_id`.
 3. (Optional) Provide `raw/weather.csv` and/or `raw/urban_proxy.csv`. If omitted, they will be generated/downloaded.
-4. Run:
+4. Ensure in `config.yaml`:
+   - `mode.data_mode: "real"`
+5. Run:
 
 ```bash
 python build_dataset.py --config config.yaml
 ```
 
-### 1.3. Quickstart (Kaggle LST dataset)
+### 1.3. Quickstart (synthetic Kaggle demo mode)
 
 1. Download a Kaggle dataset containing satellite images (and optionally a CSV with LST/temperature labels).
 2. Unzip it under `raw/kaggle_source/` so you have images and CSVs inside that folder.
 3. Ensure in `config.yaml`:
    - `mode.use_kaggle_source: true`
    - `paths.kaggle_source_dir: "raw/kaggle_source"`
-4. Run:
+4. Ensure in `config.yaml`:
+   - `mode.data_mode: "synthetic"`
+5. Run:
 
 ```bash
 python build_dataset.py --config config.yaml
@@ -155,11 +159,24 @@ After running, the `dataset/` folder will look like:
 - `dataset/splits/test.csv` — test split.
 - `dataset/metadata.json` — summary statistics and configuration snapshot.
 
-## 6. Notes & Extensions
+## 6. Modes: REAL vs Synthetic
+
+- **REAL mode (`mode.data_mode: "real"`)**
+  - Expects `raw/satellite_metadata.csv` with real LST values and tile assignments.
+  - Expects geospatially aligned image chips in `raw/satellite_images/` (e.g., from Landsat via Google Earth Engine + `scripts/prepare_real_inputs.py`).
+  - Uses real weather (from `raw/weather.csv` or Open-Meteo) aligned by `["date","tile_id"]`.
+  - Does **not** generate any synthetic brightness-based LST labels.
+
+- **Synthetic mode (`mode.data_mode: "synthetic"`)**
+  - Uses Kaggle ingestion (`mode.use_kaggle_source: true`) to auto-generate `satellite_metadata.csv` and images from a Kaggle dataset.
+  - May generate **demo** LST labels from image brightness if no labels are present. These are explicitly non-scientific and for pipeline demos only.
+
+## 7. Notes & Extensions
 
 - You can plug in any satellite dataset (e.g., Landsat, Sentinel) as long as you provide:
   - Image files.
   - A metadata CSV with LST and `tile_id` join keys, or a Kaggle dataset that can be auto-ingested.
 - For urban proxy data, any suitable proxy (population density, building footprint density, NDVI, etc.) can be used, provided it is tabular and linked by `tile_id`.
-- No model training is performed; this project only builds the dataset.
-
+- You can train the multimodal model on the built dataset using:
+  - `python train_multimodal.py --dataset_dir dataset`
+- Synthetic mode is for demonstrations only; REAL mode with physically meaningful LST labels should be used for scientific evaluation.
