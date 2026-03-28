@@ -1,0 +1,14 @@
+item,value
+data_mode,real
+lst_source,user_provided
+imagery_source,user_provided
+weather_source,csv
+urban_source,user_provided
+total_samples,3
+train_val_test_counts,2/1/0
+n_classes_present,2
+class_distribution,"{""2"": 2, ""1"": 1}"
+image_size,224×224
+tabular_numeric_features,"temperature_2m, relativehumidity_2m, windspeed_10m"
+tabular_feature_columns,"temperature_2m, relativehumidity_2m, windspeed_10m, image_id, label_class, lst"
+lst_summary,"{""min"": 31.737613359572595, ""max"": 35.93375999105417, ""mean"": 34.25186661313015, ""std"": 2.2184519062055506}"

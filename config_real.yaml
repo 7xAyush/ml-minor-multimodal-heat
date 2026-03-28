@@ -1,0 +1,52 @@
+paths:
+  dataset_root: "dataset_real"
+  raw_satellite_dir: "raw/satellite_images"
+  satellite_metadata_csv: "raw/satellite_metadata.csv"
+  weather_csv: "raw/weather_downloaded.csv"
+  urban_proxy_csv: "raw/urban_proxy.csv"
+
+sources:
+  lst: "user_provided"
+  imagery: "user_provided"
+  weather: "csv"
+  urban: "user_provided"
+
+grid:
+  tile_size_m: 1000
+  max_tiles: 100
+
+city:
+  name: "ExampleCity"
+  bbox: [12.0, 77.0, 13.0, 78.0]
+
+time:
+  start_date: "2022-01-01"
+  end_date: "2022-12-31"
+
+heat_risk:
+  low_threshold: 30.0
+  high_threshold: 35.0
+
+images:
+  size: [224, 224]
+  augment: false
+
+preprocessing:
+  join_keys: ["date", "tile_id"]
+  image_id_column: "image_id"
+  lst_column: "lst"
+  label_column: "label_class"
+  exclude_from_scaling: ["image_id", "tile_id", "date", "label_class", "lst"]
+
+mode:
+  data_mode: "real"
+  use_kaggle_source: false
+  demo_labels_if_missing: false
+
+splits:
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  random_state: 42
+  strategy: "group_tile"
+  group_key: "tile_id"

@@ -1,0 +1,4 @@
+model,input_type,split_used,accuracy,macro_f1,weighted_f1,note
+TabularRandomForest,tabular,train(pseudo-test),1.0,1.0,,evaluated on training data reused as test (tiny dataset)
+MajorityClass,none,train(pseudo-test),1.0,1.0,,evaluated on training data reused as test (tiny dataset)
+MultimodalNet,image+tabular,val(pseudo-test),0.0,0.0,0.0,evaluated on pseudo-test split (no true test samples)

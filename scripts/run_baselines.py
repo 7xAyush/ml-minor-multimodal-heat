@@ -52,14 +52,22 @@ def build_split_frame(
     split_df: pd.DataFrame, tabular: pd.DataFrame, labels: pd.DataFrame
 ) -> pd.DataFrame:
     # Ensure we have label_class and features for each image_id in the split
-    merged = split_df[["image_id"]].merge(labels[["image_id", "label_class"]], on="image_id", how="inner")
+    merged = split_df[["image_id"]].merge(
+        labels[["image_id", "label_class"]], on="image_id", how="inner"
+    )
     merged = merged.merge(tabular, on="image_id", how="inner")
+    # Handle possible duplicate label_class columns from tabular.csv
+    if "label_class" not in merged.columns:
+        for candidate in ("label_class_x", "label_class_y"):
+            if candidate in merged.columns:
+                merged["label_class"] = merged[candidate]
+                break
     if merged.empty:
         raise ValueError("Split join produced zero rows for baseline.")
     return merged
 
 
-def run_tabular_baseline(dataset_dir: Path) -> Dict[str, Any]:
+def run_tabular_baseline(dataset_dir: Path, allow_train_as_test: bool = False) -> Dict[str, Any]:
     data = load_dataset(dataset_dir)
     tabular = data["tabular"]
     labels = data["labels"]
@@ -68,7 +76,20 @@ def run_tabular_baseline(dataset_dir: Path) -> Dict[str, Any]:
     feature_cols = detect_tabular_features(tabular)
 
     train_df = build_split_frame(splits["train"], tabular, labels)
-    test_df = build_split_frame(splits["test"], tabular, labels)
+    try:
+        test_df = build_split_frame(splits["test"], tabular, labels)
+    except ValueError as exc:
+        if not allow_train_as_test:
+            raise ValueError(
+                "Test split is empty or join produced zero rows for tabular baseline. "
+                "For strict evaluation, this is not allowed. Increase the dataset "
+                "or adjust splits so that the test split is non-empty."
+            ) from exc
+        print(
+            "[WARN] Test split is empty or join produced zero rows for tabular baseline; "
+            "falling back to using the training split as pseudo-test (SMOKE TEST ONLY)."
+        )
+        test_df = train_df.copy()
 
     X_train = train_df[feature_cols].values
     y_train = train_df["label_class"].values
@@ -100,15 +121,38 @@ def run_tabular_baseline(dataset_dir: Path) -> Dict[str, Any]:
     }
 
 
-def run_majority_baseline(dataset_dir: Path) -> Dict[str, Any]:
+def run_majority_baseline(dataset_dir: Path, allow_train_as_test: bool = False) -> Dict[str, Any]:
     data = load_dataset(dataset_dir)
     labels = data["labels"]
     splits = data["splits"]
 
-    train_df = splits["train"].merge(labels[["image_id", "label_class"]], on="image_id", how="inner")
-    test_df = splits["test"].merge(labels[["image_id", "label_class"]], on="image_id", how="inner")
-    if train_df.empty or test_df.empty:
-        raise ValueError("Train/test splits empty when computing majority baseline.")
+    train_df = splits["train"].merge(
+        labels[["image_id", "label_class"]], on="image_id", how="inner"
+    )
+    test_df = splits["test"].merge(
+        labels[["image_id", "label_class"]], on="image_id", how="inner"
+    )
+    # Normalize label column name in case of x/y suffixes
+    for df in (train_df, test_df):
+        if "label_class" not in df.columns:
+            for candidate in ("label_class_x", "label_class_y"):
+                if candidate in df.columns:
+                    df["label_class"] = df[candidate]
+                    break
+    if train_df.empty:
+        raise ValueError("Training split empty when computing majority baseline.")
+    if test_df.empty:
+        if not allow_train_as_test:
+            raise ValueError(
+                "Test split is empty for majority baseline. For strict evaluation, "
+                "a non-empty test split is required. Increase dataset size or adjust "
+                "splits so that test has samples."
+            )
+        print(
+            "[WARN] Test split is empty for majority baseline; "
+            "falling back to using the training split as pseudo-test (SMOKE TEST ONLY)."
+        )
+        test_df = train_df.copy()
 
     majority_class = int(train_df["label_class"].value_counts().idxmax())
     y_test = test_df["label_class"].values
@@ -146,6 +190,15 @@ def main() -> None:
         default=None,
         help="Directory to save baseline results (default: <dataset_dir>/experiments/).",
     )
+    parser.add_argument(
+        "--allow_train_as_test",
+        action="store_true",
+        help=(
+            "Allow reusing the training split as a pseudo-test when the true test "
+            "split is empty. ONLY for smoke tests; must not be used for final "
+            "reported metrics."
+        ),
+    )
     args = parser.parse_args()
 
     dataset_dir = Path(args.dataset_dir)
@@ -156,8 +209,12 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     results = {}
-    results["tabular_baseline"] = run_tabular_baseline(dataset_dir)
-    results["majority_baseline"] = run_majority_baseline(dataset_dir)
+    results["tabular_baseline"] = run_tabular_baseline(
+        dataset_dir, allow_train_as_test=args.allow_train_as_test
+    )
+    results["majority_baseline"] = run_majority_baseline(
+        dataset_dir, allow_train_as_test=args.allow_train_as_test
+    )
 
     out_path = out_dir / "baselines.json"
     with out_path.open("w", encoding="utf-8") as f:
@@ -168,4 +225,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

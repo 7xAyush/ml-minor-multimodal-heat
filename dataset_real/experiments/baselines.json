@@ -1,0 +1,36 @@
+{
+  "tabular_baseline": {
+    "model": "TabularRandomForest",
+    "input_type": "tabular",
+    "accuracy": 0.8493150684931506,
+    "macro_f1": 0.84022493037447,
+    "classification_report": "              precision    recall  f1-score   support\n\n           0     0.7083    0.8947    0.7907        19\n           1     0.8571    0.7200    0.7826        25\n           2     0.9643    0.9310    0.9474        29\n\n    accuracy                         0.8493        73\n   macro avg     0.8433    0.8486    0.8402        73\nweighted avg     0.8610    0.8493    0.8502        73\n",
+    "feature_columns": [
+      "lat",
+      "lon",
+      "NDVI_mean",
+      "cloud_cover_land",
+      "temperature_2m",
+      "relativehumidity_2m",
+      "windspeed_10m",
+      "scene_id_LC08_L2SP_142051_20220203_20220212_02_T1",
+      "scene_id_LC08_L2SP_142051_20220526_20220602_02_T1",
+      "scene_id_LC09_L2SP_142051_20220110_20230502_02_T1",
+      "scene_id_LC09_L2SP_142051_20220331_20230423_02_T1",
+      "scene_id_LC09_L2SP_142051_20220502_20230418_02_T1",
+      "scene_id_LC09_L2SP_142051_20220603_20230414_02_T1",
+      "scene_id_LC09_L2SP_142051_20220822_20230401_02_T1",
+      "scene_id_LC09_L2SP_142051_20220923_20230328_02_T1",
+      "scene_id_LC09_L2SP_142051_20221025_20230324_02_T1",
+      "scene_id_LC09_L2SP_142051_20221228_20230316_02_T1"
+    ]
+  },
+  "majority_baseline": {
+    "model": "MajorityClass",
+    "input_type": "none",
+    "majority_class": 2,
+    "accuracy": 0.3972602739726027,
+    "macro_f1": 0.1895424836601307,
+    "classification_report": "              precision    recall  f1-score   support\n\n           0     0.0000    0.0000    0.0000        19\n           1     0.0000    0.0000    0.0000        25\n           2     0.3973    1.0000    0.5686        29\n\n    accuracy                         0.3973        73\n   macro avg     0.1324    0.3333    0.1895        73\nweighted avg     0.1578    0.3973    0.2259        73\n"
+  }
+}

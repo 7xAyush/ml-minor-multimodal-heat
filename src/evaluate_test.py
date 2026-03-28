@@ -64,14 +64,14 @@ def detect_feature_columns(tabular_df: pd.DataFrame) -> List[str]:
     return feature_cols
 
 
-def load_test_split(dataset_dir: Path) -> pd.DataFrame:
+def load_split(dataset_dir: Path, name: str) -> pd.DataFrame:
     splits_dir = dataset_dir / "splits"
-    test_path = splits_dir / "test.csv"
-    if not test_path.exists():
-        raise FileNotFoundError(f"Split file not found: {test_path}")
-    df = pd.read_csv(test_path)
+    split_path = splits_dir / f"{name}.csv"
+    if not split_path.exists():
+        raise FileNotFoundError(f"Split file not found: {split_path}")
+    df = pd.read_csv(split_path)
     if "image_id" not in df.columns:
-        raise ValueError("test.csv must contain 'image_id' column.")
+        raise ValueError(f"{name}.csv must contain 'image_id' column.")
     return df
 
 
@@ -109,10 +109,11 @@ def create_test_loader(
     dataset_dir: Path,
     batch_size: int,
     num_workers: int,
-) -> Tuple[DataLoader, List[str]]:
+    allow_pseudo_test: bool = False,
+) -> Tuple[DataLoader, List[str], pd.DataFrame]:
     tabular_df, labels_df = load_base_tables(dataset_dir)
     feature_cols = detect_feature_columns(tabular_df)
-    test_split = load_test_split(dataset_dir)
+    test_split = load_split(dataset_dir, "test")
 
     images_dir = dataset_dir / "images"
 
@@ -126,13 +127,32 @@ def create_test_loader(
         ]
     )
 
-    merged_df = build_split_dataframe(
-        split_df=test_split,
-        tabular_df=tabular_df,
-        labels_df=labels_df,
-        feature_cols=feature_cols,
-        split_name="test",
-    )
+    try:
+        merged_df = build_split_dataframe(
+            split_df=test_split,
+            tabular_df=tabular_df,
+            labels_df=labels_df,
+            feature_cols=feature_cols,
+            split_name="test",
+        )
+    except ValueError as exc:
+        if not allow_pseudo_test:
+            # In strict mode, do not silently reuse validation as test.
+            raise
+        logger.warning(
+            "Test split join produced zero rows (%s); using the validation split as "
+            "a pseudo-test set. These metrics are NOT from a true held-out test set "
+            "and should only be used for smoke testing.",
+            exc,
+        )
+        val_split = load_split(dataset_dir, "val")
+        merged_df = build_split_dataframe(
+            split_df=val_split,
+            tabular_df=tabular_df,
+            labels_df=labels_df,
+            feature_cols=feature_cols,
+            split_name="test(pseudo)",
+        )
 
     ds = MultimodalHeatDataset(
         df=merged_df,
@@ -147,7 +167,7 @@ def create_test_loader(
         num_workers=num_workers,
         collate_fn=multimodal_collate_fn,
     )
-    return loader, feature_cols
+    return loader, feature_cols, merged_df
 
 
 @torch.no_grad()
@@ -155,10 +175,11 @@ def run_inference(
     model: nn.Module,
     loader: DataLoader,
     device: torch.device,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     model.eval()
     all_preds: List[int] = []
     all_targets: List[int] = []
+    all_max_probs: List[float] = []
 
     for batch in loader:
         if batch is None:
@@ -169,13 +190,22 @@ def run_inference(
         labels = labels.to(device)
 
         logits = model(images, tabular)
+        probs = torch.softmax(logits, dim=1)
+        max_prob, _ = probs.max(dim=1)
+
         preds = torch.argmax(logits, dim=1).detach().cpu().numpy()
         targets = labels.detach().cpu().numpy()
+        max_prob_np = max_prob.detach().cpu().numpy()
 
         all_preds.extend(preds.tolist())
         all_targets.extend(targets.tolist())
+        all_max_probs.extend(max_prob_np.tolist())
 
-    return np.array(all_targets, dtype=np.int64), np.array(all_preds, dtype=np.int64)
+    return (
+        np.array(all_targets, dtype=np.int64),
+        np.array(all_preds, dtype=np.int64),
+        np.array(all_max_probs, dtype=np.float32),
+    )
 
 
 def save_confusion_matrix_heatmap(
@@ -219,6 +249,15 @@ def main() -> None:
     parser.add_argument("--dataset_dir", type=str, default="dataset")
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--num_workers", type=int, default=0)
+    parser.add_argument(
+        "--allow_pseudo_test",
+        action="store_true",
+        help=(
+            "Allow using the validation split as a pseudo-test set if the true "
+            "test split is empty. This is ONLY for smoke tests and must not be "
+            "used for final paper metrics."
+        ),
+    )
     args = parser.parse_args()
 
     setup_logging()
@@ -230,10 +269,11 @@ def main() -> None:
     if not best_model_path.exists():
         raise FileNotFoundError(f"Best model checkpoint not found at {best_model_path}")
 
-    test_loader, feature_cols = create_test_loader(
+    test_loader, feature_cols, test_df = create_test_loader(
         dataset_dir=dataset_dir,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        allow_pseudo_test=args.allow_pseudo_test,
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -250,7 +290,7 @@ def main() -> None:
     model.load_state_dict(checkpoint["model_state"])
     model.to(device)
 
-    y_true, y_pred = run_inference(model, test_loader, device)
+    y_true, y_pred, y_conf = run_inference(model, test_loader, device)
 
     acc = accuracy_score(y_true, y_pred)
     class_labels = [0, 1, 2]
@@ -276,6 +316,16 @@ def main() -> None:
 
     logger.info("Saved confusion matrix to %s", cm_path)
     logger.info("Saved classification report to %s", rep_path)
+
+    # Save per-sample predictions for case-study / debugging
+    results_df = test_df.copy()
+    results_df["true_label"] = y_true
+    results_df["pred_label"] = y_pred
+    results_df["pred_confidence"] = y_conf
+    results_df["correct"] = (y_true == y_pred).astype(int)
+    case_path = dataset_dir / "test_predictions.csv"
+    results_df.to_csv(case_path, index=False)
+    logger.info("Saved per-sample predictions to %s", case_path)
 
     # Save heatmap figure
     save_confusion_matrix_heatmap(cm, models_dir, class_labels)

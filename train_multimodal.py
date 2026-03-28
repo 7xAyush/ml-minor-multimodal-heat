@@ -117,6 +117,7 @@ def create_dataloaders(
     dataset_dir: Path,
     batch_size: int,
     num_workers: int,
+    allow_pseudo_test: bool = False,
 ) -> Tuple[DataLoader, DataLoader, DataLoader, int]:
     tabular_df, labels_df = load_base_tables(dataset_dir)
     feature_cols = detect_feature_columns(tabular_df)
@@ -144,13 +145,38 @@ def create_dataloaders(
 
     loaders: Dict[str, DataLoader] = {}
     for split_name in ["train", "val", "test"]:
-        merged_df = build_split_dataframe(
-            split_df=splits[split_name],
-            tabular_df=tabular_df,
-            labels_df=labels_df,
-            feature_cols=feature_cols,
-            split_name=split_name,
-        )
+        split_df = splits[split_name]
+        effective_name = split_name
+        try:
+            merged_df = build_split_dataframe(
+                split_df=split_df,
+                tabular_df=tabular_df,
+                labels_df=labels_df,
+                feature_cols=feature_cols,
+                split_name=split_name,
+            )
+        except ValueError as exc:
+            if split_name == "test" and allow_pseudo_test:
+                # For tiny smoke-test datasets, the test split may be empty.
+                # Fall back to using the validation split as a pseudo-test set
+                # so training remains runnable, but log this clearly.
+                logger.warning(
+                    "Test split join produced zero rows (%s); using the validation "
+                    "split as a pseudo-test set. These metrics are NOT from a true "
+                    "held-out test set and should only be used for smoke testing.",
+                    exc,
+                )
+                split_df = splits["val"]
+                effective_name = "test(pseudo)"
+                merged_df = build_split_dataframe(
+                    split_df=split_df,
+                    tabular_df=tabular_df,
+                    labels_df=labels_df,
+                    feature_cols=feature_cols,
+                    split_name=effective_name,
+                )
+            else:
+                raise
         ds = MultimodalHeatDataset(
             df=merged_df,
             images_dir=images_dir,
@@ -257,6 +283,15 @@ def main() -> None:
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--num_workers", type=int, default=0)
+    parser.add_argument(
+        "--allow_pseudo_test",
+        action="store_true",
+        help=(
+            "Allow using the validation split as a pseudo-test set if the true "
+            "test split is empty. This is ONLY for smoke tests and must not be "
+            "used for final paper metrics."
+        ),
+    )
     args = parser.parse_args()
 
     setup_logging()
@@ -270,6 +305,7 @@ def main() -> None:
         dataset_dir=dataset_dir,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        allow_pseudo_test=args.allow_pseudo_test,
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

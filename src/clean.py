@@ -97,6 +97,14 @@ def validate_and_filter_images(
 
     sat_meta_df = sat_meta_df.copy()
 
+    mode_cfg = config.get("mode", {})
+    data_mode = mode_cfg.get("data_mode", "synthetic")
+    # In REAL mode we must preserve one row per (image_id, date, tile_id),
+    # even if multiple rows share identical pixel content (e.g. static chips
+    # for multiple dates of the same tile). Hash-based de-duplication is
+    # therefore disabled for REAL data to avoid collapsing temporal samples.
+    dedup_by_hash = data_mode != "real"
+
     valid_image_ids: List[str] = []
     hash_seen: Dict[str, str] = {}
     num_corrupt = 0
@@ -126,11 +134,16 @@ def validate_and_filter_images(
             num_corrupt += 1
             continue
 
+        # Hash-based de-duplication is only applied when explicitly enabled
+        # (currently for synthetic/Kaggle modes). In REAL mode we still count
+        # duplicates but keep all rows to avoid collapsing per-date samples.
         hsh = _image_hash(img_path)
         if hsh in hash_seen:
             num_duplicates += 1
-            continue
-        hash_seen[hsh] = img_id
+            if dedup_by_hash:
+                continue
+        else:
+            hash_seen[hsh] = img_id
 
         # Load, resize and save to images_out_dir as PNG
         img = cv2.imread(str(img_path), cv2.IMREAD_UNCHANGED)

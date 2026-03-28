@@ -1,0 +1,3 @@
+Model,Input Type,Accuracy,Macro-F1
+TabularRandomForest,tabular,1.0,1.0
+MajorityClass,none,1.0,1.0

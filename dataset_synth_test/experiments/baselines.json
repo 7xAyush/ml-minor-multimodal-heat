@@ -1,0 +1,23 @@
+{
+  "tabular_baseline": {
+    "model": "TabularRandomForest",
+    "input_type": "tabular",
+    "accuracy": 1.0,
+    "macro_f1": 1.0,
+    "classification_report": "              precision    recall  f1-score   support\n\n           2     1.0000    1.0000    1.0000         2\n\n    accuracy                         1.0000         2\n   macro avg     1.0000    1.0000    1.0000         2\nweighted avg     1.0000    1.0000    1.0000         2\n",
+    "feature_columns": [
+      "temperature_2m",
+      "relativehumidity_2m",
+      "windspeed_10m",
+      "pop_density"
+    ]
+  },
+  "majority_baseline": {
+    "model": "MajorityClass",
+    "input_type": "none",
+    "majority_class": 2,
+    "accuracy": 1.0,
+    "macro_f1": 1.0,
+    "classification_report": "              precision    recall  f1-score   support\n\n           2     1.0000    1.0000    1.0000         2\n\n    accuracy                         1.0000         2\n   macro avg     1.0000    1.0000    1.0000         2\nweighted avg     1.0000    1.0000    1.0000         2\n"
+  }
+}

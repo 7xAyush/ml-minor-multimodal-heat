@@ -77,7 +77,8 @@ def build_real_dataset(config: Dict[str, Any], logger: logging.Logger | None = N
 
     # 1. Load real satellite metadata (provided by the user)
     sat_meta_df, raw_image_dir = _load_real_satellite_metadata(config)
-    logger.info("Loaded real satellite metadata with %d rows", len(sat_meta_df))
+    n_raw = len(sat_meta_df)
+    logger.info("Loaded real satellite metadata with %d rows", n_raw)
 
     # 2. Load/download weather data
     logger.info("Step 1/5 (REAL): Loading or downloading weather data")
@@ -90,6 +91,11 @@ def build_real_dataset(config: Dict[str, Any], logger: logging.Logger | None = N
     sat_meta_df, valid_image_ids, image_stats = clean.validate_and_filter_images(
         sat_meta_df, raw_image_dir, images_out_dir, config
     )
+    logger.info(
+        "After image validation, %d rows remain in satellite metadata (valid images=%d)",
+        len(sat_meta_df),
+        len(valid_image_ids),
+    )
 
     # 4. Align satellite + weather by date and tile_id (no synthetic urban proxy here)
     logger.info("Step 3/5 (REAL): Aligning satellite metadata with weather by ['date', 'tile_id']")
@@ -100,19 +106,33 @@ def build_real_dataset(config: Dict[str, Any], logger: logging.Logger | None = N
             "Aligned dataset is empty after joining satellite metadata with weather on "
             f"{join_keys}. Check that your tile_id/date values match between the two sources."
         )
-    logger.info("Aligned dataset has %d rows after join", len(aligned_df))
+    logger.info(
+        "Aligned dataset has %d rows after join (raw=%d, after image validation=%d)",
+        len(aligned_df),
+        n_raw,
+        len(sat_meta_df),
+    )
 
     # 5. Label into heat-risk classes from REAL LST
     logger.info("Step 4/5 (REAL): Labelling samples based on real LST")
     labelled_df = label.add_heat_risk_labels(aligned_df, config)
+    logger.info("After labelling, %d rows remain", len(labelled_df))
 
     # Filter to samples with valid processed images only
     image_id_col = config["preprocessing"]["image_id_column"]
     labelled_df = labelled_df[labelled_df[image_id_col].isin(valid_image_ids)].reset_index(drop=True)
+    n_final = len(labelled_df)
     logger.info(
-        "After filtering to valid processed images, %d samples remain in REAL mode",
-        len(labelled_df),
+        "After filtering to valid processed images, %d samples remain in REAL mode", n_final
     )
+    # Integrity guardrail: if we lose the majority of rows, fail loudly so that
+    # issues (e.g. unexpected de-duplication) are caught early.
+    if n_raw > 0 and n_final < 0.5 * n_raw:
+        raise ValueError(
+            f"REAL pipeline lost too many rows: raw={n_raw}, final={n_final}. "
+            "Check image validation and join logic; this is unexpected for "
+            "well-formed REAL inputs."
+        )
 
     # 6. Preprocessing (images + tabular) and splits
     logger.info("Step 5/5 (REAL): Preprocessing and creating splits")
