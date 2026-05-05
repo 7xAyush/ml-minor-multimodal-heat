@@ -31,6 +31,11 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from PIL import Image
+import numpy as np
+import matplotlib.pyplot as plt
+import rasterio
+from rasterio.windows import from_bounds
+from rasterio.warp import transform_bounds
 
 
 CLASS_NAMES = {
@@ -74,6 +79,110 @@ def load_classification_report(dataset_dir: Path) -> str | None:
     return cr_path.read_text(encoding="utf-8")
 
 
+def generate_overlay_if_missing(
+    image_id: str,
+    ee_metadata_csv: Path,
+    composite_tif: Path,
+    out_dir: Path,
+    alpha: float = 0.5,
+) -> Path | None:
+    """
+    Generate an LST overlay PNG for a given image_id if it does not already exist.
+
+    This uses the same assumptions as scripts/overlay_tile_heatmap.py:
+      - composite_tif bands: [1=RED,2=GREEN,3=BLUE,4=NDVI,5=LST_C]
+      - ee_metadata_csv: columns tile_id,date,image_id,min_lon,min_lat,max_lon,max_lat
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{image_id}_heat_overlay.png"
+    if out_path.exists():
+        return out_path
+
+    if not ee_metadata_csv.exists() or not composite_tif.exists():
+        return None
+
+    df = pd.read_csv(ee_metadata_csv)
+    required = ["tile_id", "date", "image_id", "min_lon", "min_lat", "max_lon", "max_lat"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        return None
+
+    sub = df[df["image_id"].astype(str) == str(image_id)]
+    if sub.empty:
+        return None
+    row = sub.iloc[0]
+
+    min_lon = float(row["min_lon"])
+    min_lat = float(row["min_lat"])
+    max_lon = float(row["max_lon"])
+    max_lat = float(row["max_lat"])
+    tile_id = str(row["tile_id"])
+    date = str(row["date"])
+
+    # Helper to normalize RGB
+    def _norm_rgb(patch: np.ndarray) -> np.ndarray:
+        if patch.ndim != 3 or patch.shape[2] != 3:
+            return np.zeros_like(patch, dtype=np.uint8)
+        if not np.isfinite(patch).any() or np.all(patch == 0):
+            return np.zeros_like(patch, dtype=np.uint8)
+        out = np.zeros_like(patch, dtype=np.uint8)
+        for c in range(3):
+            band = patch[:, :, c].astype(np.float32)
+            mask = np.isfinite(band)
+            if not mask.any():
+                continue
+            vmin = np.percentile(band[mask], 2.0)
+            vmax = np.percentile(band[mask], 98.0)
+            if vmax <= vmin:
+                vmax = vmin + 1.0
+            band = np.clip((band - vmin) / (vmax - vmin), 0.0, 1.0)
+            out[:, :, c] = (band * 255.0).astype(np.uint8)
+        return out
+
+    try:
+        with rasterio.open(composite_tif) as src:
+            left, bottom, right, top = transform_bounds(
+                "EPSG:4326",
+                src.crs,
+                min_lon,
+                min_lat,
+                max_lon,
+                max_lat,
+                densify_pts=2,
+            )
+            window = from_bounds(left, bottom, right, top, transform=src.transform)
+            rgb = src.read((1, 2, 3), window=window, boundless=True, fill_value=0)
+            lst = src.read(5, window=window, boundless=True, fill_value=np.nan)
+    except Exception:
+        return None
+
+    rgb = np.transpose(rgb, (1, 2, 0))
+    lst = lst.squeeze()
+    rgb_uint8 = _norm_rgb(rgb)
+
+    lst_mask = np.isfinite(lst)
+    if not lst_mask.any():
+        return None
+
+    vals = lst[lst_mask]
+    p5, p95 = np.percentile(vals, [5, 95])
+    if p95 <= p5:
+        p95 = p5 + 1.0
+    lst_norm = (lst - p5) / (p95 - p5)
+    lst_norm = np.clip(lst_norm, 0.0, 1.0)
+
+    cmap = plt.cm.inferno
+    fig, ax = plt.subplots(figsize=(3, 3), dpi=200)
+    ax.set_axis_off()
+    fig.patch.set_facecolor("white")
+    ax.imshow(rgb_uint8, origin="upper")
+    ax.imshow(cmap(lst_norm), origin="upper", alpha=alpha)
+    ax.set_title(f"{tile_id} @ {date}", fontsize=7)
+    plt.savefig(out_path, dpi=200, bbox_inches="tight", pad_inches=0.05)
+    plt.close(fig)
+    return out_path
+
+
 def main() -> None:
     st.set_page_config(page_title="Urban Heat Risk Explorer", layout="wide")
     st.title("Multimodal Urban Heat Risk Explorer (REAL data)")
@@ -94,6 +203,25 @@ def main() -> None:
         "4. scripts/run_baselines.py & scripts/aggregate_results.py\n"
         "5. scripts/overlay_tile_heatmap.py (for tiles you want overlays for)"
     )
+
+    # Sidebar configuration for overlays
+    st.sidebar.subheader("Overlay configuration")
+    ee_meta_str = st.sidebar.text_input(
+        "EE metadata CSV",
+        "raw/landsat/chennai_tiles_metadata.csv",
+        help="Used to auto-generate LST overlays",
+    )
+    comp_tif_str = st.sidebar.text_input(
+        "Composite GeoTIFF",
+        "raw/landsat/chennai_landsat_composite.tif",
+        help="Composite with RGB+NDVI+LST_C bands",
+    )
+    overlay_alpha = st.sidebar.slider(
+        "Overlay opacity (alpha)", min_value=0.2, max_value=0.9, value=0.5, step=0.05
+    )
+    ee_meta_path = Path(ee_meta_str)
+    comp_tif_path = Path(comp_tif_str)
+    overlay_dir = Path("docs") / "tile_heat_overlays"
 
     # Load data
     preds = load_test_predictions(dataset_dir)
@@ -162,17 +290,22 @@ def main() -> None:
             st.write(f"Image file not found at {img_path}")
 
     # Heat overlay (if generated)
-    overlay_path = Path("docs") / "tile_heat_overlays" / f"{selected_id}_heat_overlay.png"
+    overlay_path = overlay_dir / f"{selected_id}_heat_overlay.png"
     with col_overlay:
         st.markdown("**LST heat overlay (if available)**")
+        if not overlay_path.exists():
+            # Try to generate overlay on the fly.
+            gen_path = generate_overlay_if_missing(
+                selected_id, ee_meta_path, comp_tif_path, overlay_dir, alpha=overlay_alpha
+            )
+            if gen_path is not None and gen_path.exists():
+                overlay_path = gen_path
         if overlay_path.exists():
             st.image(str(overlay_path), caption="RGB + REAL LST overlay", use_column_width=True)
         else:
             st.info(
-                f"No overlay found for {selected_id}. "
-                "Generate one with:\n"
-                "  python scripts/overlay_tile_heatmap.py "
-                "--image_id {selected_id}"
+                "No overlay available and automatic generation failed. "
+                "Check EE metadata / composite paths in the sidebar."
             )
 
     # Metrics for this tile
